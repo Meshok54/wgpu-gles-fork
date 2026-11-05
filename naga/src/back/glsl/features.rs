@@ -59,6 +59,8 @@ bitflags::bitflags! {
         const SHADER_BARYCENTRICS = 1 << 26;
         /// Primitive index builtin
         const PRIMITIVE_INDEX = 1 << 27;
+        /// External texture (`texture_external` → `samplerExternalOES`, GLES only)
+        const EXTERNAL_TEXTURE = 1 << 28;
     }
 }
 
@@ -139,6 +141,12 @@ impl FeaturesManager {
         check_feature!(TEXTURE_LEVELS, 130);
         check_feature!(IMAGE_SIZE, 430, 310);
         check_feature!(TEXTURE_SHADOW_LOD, 200, 300);
+        // samplerExternalOES — только ES 3.0+ (GL_OES_EGL_image_external_essl3)
+        if self.0.contains(Features::EXTERNAL_TEXTURE)
+            && (!version.is_es() || version < Version::new_gles(300))
+        {
+            missing |= Features::EXTERNAL_TEXTURE;
+        }
 
         // Return an error if there are missing features
         if missing.is_empty() {
@@ -154,6 +162,9 @@ impl FeaturesManager {
     /// This won't check for feature availability so it might output extensions that aren't even
     /// supported.[`check_availability`](Self::check_availability) will check feature availability
     pub fn write(&self, options: &Options, mut out: impl Write) -> BackendResult {
+        if self.0.contains(Features::EXTERNAL_TEXTURE) {
+            writeln!(out, "#extension GL_OES_EGL_image_external_essl3 : require")?;
+        }
         if self.0.contains(Features::COMPUTE_SHADER) && !options.version.is_es() {
             // https://www.khronos.org/registry/OpenGL/extensions/ARB/ARB_compute_shader.txt
             writeln!(out, "#extension GL_ARB_compute_shader : require")?;
@@ -444,9 +455,9 @@ impl<W> Writer<'_, W> {
                             }
                             _ => {}
                         },
+                        ImageClass::External => self.features.request(Features::EXTERNAL_TEXTURE),
                         ImageClass::Sampled { multi: false, .. }
-                        | ImageClass::Depth { multi: false }
-                        | ImageClass::External => {}
+                        | ImageClass::Depth { multi: false } => {}
                     }
                 }
                 _ => {}

@@ -597,7 +597,12 @@ impl<'a, W: Write> Writer<'a, W> {
             Ic::Depth { multi: true } => ("sampler", float, "MS", ""),
             Ic::Depth { multi: false } => ("sampler", float, "", "Shadow"),
             Ic::Storage { format, .. } => ("image", format.into(), "", ""),
-            Ic::External => unimplemented!(),
+            // Внешняя текстура GLES: samplerExternalOES, без размерности и модификаторов.
+            Ic::External => {
+                let precision = if self.options.version.is_es() { "highp " } else { "" };
+                write!(self.out, "{precision}samplerExternalOES")?;
+                return Ok(());
+            }
         };
 
         let precision = if self.options.version.is_es() {
@@ -2546,7 +2551,10 @@ impl<'a, W: Write> Writer<'a, W> {
                     && !self.features.contains(Features::TEXTURE_SHADOW_LOD);
 
                 // Write the function to be used depending on the sample level
+                // Внешняя текстура (samplerExternalOES): только texture(), у неё один уровень.
+                let external = matches!(class, crate::ImageClass::External);
                 let fun_name = match level {
+                    _ if external => "texture",
                     crate::SampleLevel::Zero if gather.is_some() => "textureGather",
                     crate::SampleLevel::Zero if workaround_lod_with_grad => "textureGrad",
                     crate::SampleLevel::Auto | crate::SampleLevel::Bias(_) => "texture",
@@ -2615,6 +2623,7 @@ impl<'a, W: Write> Writer<'a, W> {
                     // Auto needs no more arguments
                     crate::SampleLevel::Auto => (),
                     // Zero needs level set to 0
+                    crate::SampleLevel::Zero if external => (),
                     crate::SampleLevel::Zero => {
                         if workaround_lod_with_grad {
                             let vec_dim = match dim {
@@ -2752,7 +2761,11 @@ impl<'a, W: Write> Writer<'a, W> {
                                 write!(self.out, "imageSize(")?;
                                 self.write_expr(image, ctx)?;
                             }
-                            ImageClass::External => unimplemented!(),
+                            ImageClass::External => {
+                                write!(self.out, "textureSize(")?;
+                                self.write_expr(image, ctx)?;
+                                write!(self.out, ", 0")?;
+                            }
                         }
                         write!(self.out, ")")?;
                         if components != 1 || self.options.version.is_es() {
