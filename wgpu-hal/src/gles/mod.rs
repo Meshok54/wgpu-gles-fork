@@ -132,6 +132,8 @@ pub struct Api;
 
 //Note: we can support more samplers if not every one of them is used at a time,
 // but it probably doesn't worth it.
+/// GL_TEXTURE_EXTERNAL_OES (OES_EGL_image_external).
+const TEXTURE_EXTERNAL_OES: u32 = 0x8D65;
 const MAX_TEXTURE_SLOTS: usize = 16;
 const MAX_SAMPLERS: usize = 16;
 const MAX_VERTEX_ATTRIBUTES: usize = 16;

@@ -457,6 +457,11 @@ impl super::Adapter {
             extensions.contains("GL_EXT_texture_border_clamp")
                 || extensions.contains("GL_ARB_texture_border_clamp"),
         );
+        // Внешняя текстура: на GLES — samplerExternalOES (одна плоскость, цвет уже RGB от драйвера).
+        features.set(
+            wgt::Features::EXTERNAL_TEXTURE,
+            extensions.contains("GL_OES_EGL_image_external_essl3"),
+        );
         features.set(
             wgt::Features::DEPTH_CLIP_CONTROL,
             extensions.contains("GL_EXT_depth_clamp") || extensions.contains("GL_ARB_depth_clamp"),

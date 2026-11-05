@@ -144,6 +144,34 @@ impl super::Device {
         }
     }
 
+    /// Текстура из GL-имени с целью `GL_TEXTURE_EXTERNAL_OES` (кадр камеры из EGLImage/AHardwareBuffer).
+    /// Читать её можно только через привязку `BindingType::ExternalTexture` (в WGSL — `texture_external`).
+    ///
+    /// # Safety
+    ///
+    /// - `name` must be a texture bound to `GL_TEXTURE_EXTERNAL_OES`, visible in this context (share group)
+    /// - `desc` — один уровень, один слой, 2D
+    /// - If `drop_callback` is [`None`], wgpu-hal will take ownership of the texture.
+    pub unsafe fn texture_from_raw_external(
+        &self,
+        name: NonZeroU32,
+        desc: &crate::TextureDescriptor,
+        drop_callback: Option<crate::DropCallback>,
+    ) -> super::Texture {
+        super::Texture {
+            inner: super::TextureInner::Texture {
+                raw: glow::NativeTexture(name),
+                target: super::TEXTURE_EXTERNAL_OES,
+            },
+            drop_guard: crate::DropGuard::from_option(drop_callback),
+            mip_level_count: desc.mip_level_count,
+            array_layer_count: desc.array_layer_count(),
+            format: desc.format,
+            format_desc: self.shared.describe_texture_format(desc.format),
+            copy_size: desc.copy_extent(),
+        }
+    }
+
     /// # Safety
     ///
     /// - `name` must be created respecting `desc`
@@ -1219,7 +1247,9 @@ impl crate::Device for super::Device {
             for entry in bg_layout.entries.iter() {
                 let counter = match entry.ty {
                     wgt::BindingType::Sampler { .. } => &mut num_samplers,
-                    wgt::BindingType::Texture { .. } => &mut num_textures,
+                    wgt::BindingType::Texture { .. } | wgt::BindingType::ExternalTexture => {
+                        &mut num_textures
+                    }
                     wgt::BindingType::StorageTexture { .. } => &mut num_images,
                     wgt::BindingType::Buffer {
                         ty: wgt::BufferBindingType::Uniform,
@@ -1230,7 +1260,6 @@ impl crate::Device for super::Device {
                         ..
                     } => &mut num_storage_buffers,
                     wgt::BindingType::AccelerationStructure { .. } => unimplemented!(),
-                    wgt::BindingType::ExternalTexture => unimplemented!(),
                 };
 
                 binding_to_slot[entry.binding as usize] = *counter;
@@ -1341,7 +1370,19 @@ impl crate::Device for super::Device {
                     })
                 }
                 wgt::BindingType::AccelerationStructure { .. } => unimplemented!(),
-                wgt::BindingType::ExternalTexture => unimplemented!(),
+                // Внешняя текстура: только первая плоскость, её цель — та, с которой создана текстура
+                // (GL_TEXTURE_EXTERNAL_OES у `texture_from_raw_external`). Параметры преобразования цвета
+                // не нужны: samplerExternalOES отдаёт уже RGB.
+                wgt::BindingType::ExternalTexture => {
+                    let view = desc.external_textures[entry.resource_index as usize].planes[0].view;
+                    let (raw, target) = view.inner.as_native();
+                    super::RawBinding::Texture {
+                        raw,
+                        target,
+                        aspects: view.aspects,
+                        mip_levels: view.mip_levels.clone(),
+                    }
+                }
             };
             contents.push(binding);
         }

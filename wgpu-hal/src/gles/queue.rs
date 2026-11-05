@@ -1568,6 +1568,10 @@ impl super::Queue {
             } => {
                 unsafe { gl.active_texture(glow::TEXTURE0 + slot) };
                 unsafe { gl.bind_texture(target, Some(texture)) };
+                // У внешней текстуры нет уровней (BASE/MAX_LEVEL для неё — ошибка GL).
+                if target == super::TEXTURE_EXTERNAL_OES {
+                    return;
+                }
 
                 unsafe {
                     gl.tex_parameter_i32(target, glow::TEXTURE_BASE_LEVEL, mip_levels.start as i32)
